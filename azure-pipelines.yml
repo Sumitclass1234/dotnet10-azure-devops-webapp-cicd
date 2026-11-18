@@ -59,8 +59,6 @@ steps:
     archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
     replaceExistingArchive: true
 
-
-- 
 - task: PowerShell@2
   displayName: 'Create Deployment ZIP'
   inputs:
