@@ -60,8 +60,9 @@ steps:
     replaceExistingArchive: true
 
 
+- 
 - task: PowerShell@2
-  displayName: 'Create Correct Deployment ZIP'
+  displayName: 'Create Deployment ZIP'
   inputs:
     targetType: 'inline'
     script: |
@@ -72,12 +73,9 @@ steps:
           Remove-Item $zip -Force
       }
 
-      Compress-Archive `
-        -Path "$source\*" `
-        -DestinationPath $zip `
-        -Force
+      Compress-Archive -Path "$source\*" -DestinationPath $zip -Force
 
-      Write-Host "Deployment ZIP created: $zip"
+      Write-Host "Deployment ZIP created successfully."
 
 
 - task: AzureWebApp@1
