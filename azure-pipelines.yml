@@ -43,21 +43,35 @@ steps:
     arguments: '--configuration $(buildConfiguration) --output "$(publishFolder)" --no-build'
     zipAfterPublish: false
 
+- task: PowerShell@2
+  displayName: 'Validate Publish Directory'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $source = "$(publishFolder)"
+
+      Write-Host "Checking published files..."
+
+      Get-ChildItem $source | ForEach-Object {
+          Write-Host $_.Name
+      }
+
+      if (!(Test-Path "$source\web.config")) {
+          throw "web.config missing from publish directory"
+      }
+
+      if (!(Test-Path "$source\WebApp.dll")) {
+          throw "WebApp.dll missing from publish directory"
+      }
+
+      Write-Host "SUCCESS: Publish directory verified."
+
 - task: PublishPipelineArtifact@1
   displayName: 'Publish Build Artifact'
   inputs:
     targetPath: '$(publishFolder)'
     artifact: 'WebApp-drop'
     publishLocation: 'pipeline'
-
-- task: ArchiveFiles@2
-  displayName: 'Create WebApp Deployment ZIP'
-  inputs:
-    rootFolderOrFile: '$(publishFolder)'
-    includeRootFolder: false
-    archiveType: 'zip'
-    archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
-    replaceExistingArchive: true
 
 - task: PowerShell@2
   displayName: 'Create Deployment ZIP'
@@ -75,6 +89,39 @@ steps:
 
       Write-Host "Deployment ZIP created successfully."
 
+- task: PowerShell@2
+  displayName: 'Validate Deployment ZIP'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+      $zipPath = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
+      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+
+      try {
+          $entries = @($archive.Entries | ForEach-Object {
+              $_.FullName
+          })
+
+          Write-Host "ZIP CONTENTS:"
+          $entries | ForEach-Object {
+              Write-Host $_
+          }
+
+          if ($entries -notcontains "web.config") {
+              throw "web.config missing at ZIP root"
+          }
+
+          if ($entries -notcontains "WebApp.dll") {
+              throw "WebApp.dll missing at ZIP root"
+          }
+
+          Write-Host "SUCCESS: Correct ZIP structure."
+      }
+      finally {
+          $archive.Dispose()
+      }
 
 - task: AzureWebApp@1
   displayName: 'Deploy ASP.NET Core Web API'
