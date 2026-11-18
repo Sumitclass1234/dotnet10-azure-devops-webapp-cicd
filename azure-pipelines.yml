@@ -13,20 +13,34 @@ variables:
   buildConfiguration: 'Release'
   projectPath: 'WebApp/WebApp.csproj'
   publishFolder: '$(Build.ArtifactStagingDirectory)\publish'
+  zipPath: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
 
 steps:
+
+# 1. Install .NET 10 SDK
 - task: UseDotNet@2
   displayName: 'Install .NET 10 SDK'
   inputs:
     packageType: 'sdk'
     version: '10.x'
 
+# 2. Display SDK Information
+- task: PowerShell@2
+  displayName: 'Check .NET SDK'
+  inputs:
+    targetType: 'inline'
+    script: |
+      dotnet --info
+      dotnet --list-sdks
+
+# 3. Restore NuGet Packages
 - task: DotNetCoreCLI@2
   displayName: 'Restore NuGet Packages'
   inputs:
     command: 'restore'
     projects: '$(projectPath)'
 
+# 4. Build Application
 - task: DotNetCoreCLI@2
   displayName: 'Build ASP.NET Core Web API'
   inputs:
@@ -34,38 +48,65 @@ steps:
     projects: '$(projectPath)'
     arguments: '--configuration $(buildConfiguration) --no-restore'
 
+# 5. Clean Publish Directory
+- task: PowerShell@2
+  displayName: 'Clean Publish Directory'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $publish = "$(publishFolder)"
+
+      if (Test-Path $publish) {
+          Remove-Item $publish -Recurse -Force
+      }
+
+      New-Item -ItemType Directory -Path $publish -Force
+
+# 6. Publish Application
 - task: DotNetCoreCLI@2
   displayName: 'Publish ASP.NET Core Web API'
   inputs:
     command: 'publish'
     publishWebProjects: false
     projects: '$(projectPath)'
-    arguments: '--configuration $(buildConfiguration) --output "$(publishFolder)" --no-build'
+    arguments: '--configuration $(buildConfiguration) --output "$(publishFolder)"'
     zipAfterPublish: false
+    modifyOutputPath: false
 
+# 7. Validate Publish Files
 - task: PowerShell@2
   displayName: 'Validate Publish Directory'
   inputs:
     targetType: 'inline'
     script: |
-      $source = "$(publishFolder)"
+      $publish = "$(publishFolder)"
 
       Write-Host "Checking published files..."
 
-      Get-ChildItem $source | ForEach-Object {
-          Write-Host $_.Name
+      Get-ChildItem $publish -Recurse | ForEach-Object {
+          Write-Host $_.FullName
       }
 
-      if (!(Test-Path "$source\web.config")) {
-          throw "web.config missing from publish directory"
+      $requiredFiles = @(
+          "WebApp.dll",
+          "WebApp.deps.json",
+          "WebApp.runtimeconfig.json",
+          "web.config"
+      )
+
+      foreach ($file in $requiredFiles) {
+          $path = Join-Path $publish $file
+
+          if (!(Test-Path $path)) {
+              throw "Required publish file missing: $file"
+          }
+
+          Write-Host "FOUND: $file"
       }
 
-      if (!(Test-Path "$source\WebApp.dll")) {
-          throw "WebApp.dll missing from publish directory"
-      }
+      Write-Host "SUCCESS: Publish validation completed."
 
-      Write-Host "SUCCESS: Publish directory verified."
-
+# 8. Publish Pipeline Artifact
 - task: PublishPipelineArtifact@1
   displayName: 'Publish Build Artifact'
   inputs:
@@ -73,22 +114,32 @@ steps:
     artifact: 'WebApp-drop'
     publishLocation: 'pipeline'
 
+# 9. Create Deployment ZIP
 - task: PowerShell@2
   displayName: 'Create Deployment ZIP'
   inputs:
     targetType: 'inline'
     script: |
-      $source = "$(publishFolder)"
-      $zip = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
+      $publish = "$(publishFolder)"
+      $zip = "$(zipPath)"
 
       if (Test-Path $zip) {
           Remove-Item $zip -Force
       }
 
-      Compress-Archive -Path "$source\*" -DestinationPath $zip -Force
+      Compress-Archive `
+        -Path "$publish\*" `
+        -DestinationPath $zip `
+        -Force
 
-      Write-Host "Deployment ZIP created successfully."
+      if (!(Test-Path $zip)) {
+          throw "Deployment ZIP creation failed."
+      }
 
+      Write-Host "SUCCESS: Deployment ZIP created."
+      Write-Host $zip
+
+# 10. Validate ZIP Structure
 - task: PowerShell@2
   displayName: 'Validate Deployment ZIP'
   inputs:
@@ -96,8 +147,9 @@ steps:
     script: |
       Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-      $zipPath = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
-      $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+      $zip = "$(zipPath)"
+
+      $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
 
       try {
           $entries = @($archive.Entries | ForEach-Object {
@@ -109,25 +161,24 @@ steps:
               Write-Host $_
           }
 
-          if ($entries -notcontains "web.config") {
-              throw "web.config missing at ZIP root"
+          foreach ($file in @("web.config", "WebApp.dll")) {
+              if ($entries -notcontains $file) {
+                  throw "ZIP validation failed: $file missing at root."
+              }
           }
 
-          if ($entries -notcontains "WebApp.dll") {
-              throw "WebApp.dll missing at ZIP root"
-          }
-
-          Write-Host "SUCCESS: Correct ZIP structure."
+          Write-Host "SUCCESS: ZIP structure verified."
       }
       finally {
           $archive.Dispose()
       }
 
+# 11. Deploy to Azure App Service
 - task: AzureWebApp@1
   displayName: 'Deploy ASP.NET Core Web API'
   inputs:
     azureSubscription: 'sc-azure-subscription1'
     appType: 'webApp'
     appName: 'sumit-webapp-cicd-2026'
-    package: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
+    package: '$(zipPath)'
     deploymentMethod: 'zipDeploy'
