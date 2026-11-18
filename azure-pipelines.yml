@@ -12,13 +12,14 @@ pool:
 variables:
   buildConfiguration: 'Release'
   projectPath: 'WebApp/WebApp.csproj'
+  publishFolder: '$(Build.ArtifactStagingDirectory)\WebApp'
 
 steps:
 - task: UseDotNet@2
-  displayName: 'Install .NET 8 SDK'
+  displayName: 'Install .NET 10 SDK'
   inputs:
     packageType: 'sdk'
-    version: '8.x'
+    version: '10.x'
 
 - task: DotNetCoreCLI@2
   displayName: 'Restore NuGet Packages'
@@ -34,32 +35,30 @@ steps:
     arguments: '--configuration $(buildConfiguration) --no-restore'
 
 - task: DotNetCoreCLI@2
-  displayName: 'Publish Web API'
+  displayName: 'Publish ASP.NET Core Web API'
   inputs:
     command: 'publish'
     publishWebProjects: false
     projects: '$(projectPath)'
-    arguments: '--configuration $(buildConfiguration) --output "$(Build.ArtifactStagingDirectory)\WebApp"'
+    arguments: '--configuration $(buildConfiguration) --output "$(publishFolder)" --no-build'
     zipAfterPublish: false
 
 - task: PublishPipelineArtifact@1
   displayName: 'Publish Build Artifact'
   inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)\WebApp'
+    targetPath: '$(publishFolder)'
     artifact: 'WebApp-drop'
     publishLocation: 'pipeline'
 
-# Create deployment ZIP
 - task: ArchiveFiles@2
   displayName: 'Create WebApp Deployment ZIP'
   inputs:
-    rootFolderOrFile: '$(Build.ArtifactStagingDirectory)\WebApp'
+    rootFolderOrFile: '$(publishFolder)'
     includeRootFolder: false
     archiveType: 'zip'
     archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
     replaceExistingArchive: true
 
-# Deploy to Azure App Service
 - task: AzureWebApp@1
   displayName: 'Deploy ASP.NET Core Web API'
   inputs:
@@ -68,25 +67,3 @@ steps:
     appName: 'sumit-webapp-cicd-2026'
     package: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
     deploymentMethod: 'zipDeploy'
-
-
-# Create deployment ZIP
-- task: ArchiveFiles@2
-  displayName: 'Create WebApp Deployment ZIP'
-  inputs:
-    rootFolderOrFile: '$(Build.ArtifactStagingDirectory)\WebApp'
-    includeRootFolder: false
-    archiveType: 'zip'
-    archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
-    replaceExistingArchive: true
-
-# Deploy to Azure App Service
-- task: AzureWebApp@1
-  displayName: 'Deploy ASP.NET Core Web API'
-  inputs:
-    azureSubscription: 'sc-azure-subscription1'
-    appType: 'webApp'
-    appName: 'sumit-webapp-cicd-2026'
-    package: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
-    deploymentMethod: 'zipDeploy'
-
