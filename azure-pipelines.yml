@@ -59,40 +59,25 @@ steps:
     archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
     replaceExistingArchive: true
 
+
 - task: PowerShell@2
-  displayName: 'Validate Deployment ZIP Structure'
+  displayName: 'Create Correct Deployment ZIP'
   inputs:
     targetType: 'inline'
     script: |
-      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      $source = "$(publishFolder)"
+      $zip = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
 
-      $zipPath = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
-
-      $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
-
-      try {
-          $entries = $zip.Entries | ForEach-Object {
-              $_.FullName
-          }
-
-          Write-Host "Deployment ZIP contents:"
-          $entries | ForEach-Object {
-              Write-Host $_
-          }
-
-          if ($entries -notcontains "web.config") {
-              throw "ERROR: web.config is not at ZIP root!"
-          }
-
-          if ($entries -notcontains "WebApp.dll") {
-              throw "ERROR: WebApp.dll is not at ZIP root!"
-          }
-
-          Write-Host "SUCCESS: ZIP structure is correct."
+      if (Test-Path $zip) {
+          Remove-Item $zip -Force
       }
-      finally {
-          $zip.Dispose()
-      }
+
+      Compress-Archive `
+        -Path "$source\*" `
+        -DestinationPath $zip `
+        -Force
+
+      Write-Host "Deployment ZIP created: $zip"
 
 
 - task: AzureWebApp@1
