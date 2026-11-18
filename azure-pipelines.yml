@@ -12,7 +12,7 @@ pool:
 variables:
   buildConfiguration: 'Release'
   projectPath: 'WebApp/WebApp.csproj'
-  publishFolder: '$(Build.ArtifactStagingDirectory)\WebApp'
+  publishFolder: '$(Build.ArtifactStagingDirectory)\publish'
 
 steps:
 - task: UseDotNet@2
