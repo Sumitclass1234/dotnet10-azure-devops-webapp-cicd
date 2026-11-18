@@ -59,6 +59,42 @@ steps:
     archiveFile: '$(Build.ArtifactStagingDirectory)\WebApp.zip'
     replaceExistingArchive: true
 
+- task: PowerShell@2
+  displayName: 'Validate Deployment ZIP Structure'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+      $zipPath = "$(Build.ArtifactStagingDirectory)\WebApp.zip"
+
+      $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+
+      try {
+          $entries = $zip.Entries | ForEach-Object {
+              $_.FullName
+          }
+
+          Write-Host "Deployment ZIP contents:"
+          $entries | ForEach-Object {
+              Write-Host $_
+          }
+
+          if ($entries -notcontains "web.config") {
+              throw "ERROR: web.config is not at ZIP root!"
+          }
+
+          if ($entries -notcontains "WebApp.dll") {
+              throw "ERROR: WebApp.dll is not at ZIP root!"
+          }
+
+          Write-Host "SUCCESS: ZIP structure is correct."
+      }
+      finally {
+          $zip.Dispose()
+      }
+
+
 - task: AzureWebApp@1
   displayName: 'Deploy ASP.NET Core Web API'
   inputs:
